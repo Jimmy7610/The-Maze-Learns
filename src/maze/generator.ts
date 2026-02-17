@@ -72,7 +72,7 @@ export function generateMaze(config: MazeConfig, params: GenerationParams): Maze
         // 6. Solvability check
         const solution = solveMaze(cells, config, exit);
         if (solution.solvable) {
-            return { cells, exit, config, params, finalSeed: seed };
+            return { cells, exit, config, params, finalSeed: seed, solutionPath: solution.path };
         }
 
         seed++;
@@ -366,5 +366,5 @@ function generateFallbackMaze(config: MazeConfig, params: GenerationParams): Maz
     cells[config.rings - 1][0].wallOuter = false;
     cells[config.rings - 1][1].wallOuter = false;
 
-    return { cells, exit, config, params, finalSeed: config.seed };
+    return { cells, exit, config, params, finalSeed: config.seed, solutionPath: [] };
 }

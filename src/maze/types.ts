@@ -71,7 +71,7 @@ export function defaultGenerationParams(): GenerationParams {
         decoyRate: 0.2,
         pathLengthBias: 0.5,
         exitOffset: -1,
-        exitWidth: 2,
+        exitWidth: 1,
     };
 }
 
@@ -82,6 +82,8 @@ export interface MazeData {
     params: GenerationParams;
     /** Final seed actually used (may differ if generation retried) */
     finalSeed: number;
+    /** Solution path as [(ring, slice), ...] from center to exit */
+    solutionPath: [number, number][];
 }
 
 /**
