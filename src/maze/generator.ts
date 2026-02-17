@@ -35,7 +35,7 @@ const GEOMETRIC_MARGIN = 1;
 const MAX_REGEN_ATTEMPTS = 20;
 
 /** Weight multiplier for arc (CW/CCW) vs radial (inner/outer) in DFS. */
-const ARC_BIAS = 4;
+const ARC_BIAS = 20;
 
 export function generateMaze(config: MazeConfig, params: GenerationParams): MazeData {
     let seed = config.seed;
@@ -193,19 +193,12 @@ function carveSpanningTree(cells: MazeCell[][], config: MazeConfig, rng: RNG): v
 }
 
 /**
- * Open 2-3 entry holes in ring 0's inner wall so the ball can
- * fall from the center void into the maze. Holes are spaced
- * evenly around the ring.
+ * Open exactly 1 entry hole in ring 0's inner wall.
+ * Only one way in — forces the player to navigate properly.
  */
 function openEntryHoles(cells: MazeCell[][], config: MazeConfig, rng: RNG): void {
-    const numHoles = Math.min(3, Math.max(2, Math.floor(config.slices / 4)));
-    const spacing = Math.floor(config.slices / numHoles);
-    const offset = rng.nextInt(0, config.slices);
-
-    for (let i = 0; i < numHoles; i++) {
-        const s = (offset + i * spacing) % config.slices;
-        cells[0][s].wallInner = false;
-    }
+    const s = rng.nextInt(0, config.slices);
+    cells[0][s].wallInner = false;
 }
 
 /**
@@ -276,7 +269,8 @@ function capRadialWalls(
 }
 
 /**
- * Place exit on outer ring.
+ * Place exit on outer ring — AVOID south quadrant (where gravity pulls).
+ * Exit is placed in upper half or sides so the ball can't just drop out.
  */
 function placeExit(
     cells: MazeCell[][],
@@ -284,10 +278,26 @@ function placeExit(
     params: GenerationParams,
     rng: RNG,
 ): ExitSector {
-    const sliceStart =
-        params.exitOffset >= 0
-            ? params.exitOffset % config.slices
-            : rng.nextInt(0, config.slices);
+    let sliceStart: number;
+
+    if (params.exitOffset >= 0) {
+        sliceStart = params.exitOffset % config.slices;
+    } else {
+        // Avoid south quadrant: slices near 3π/2 (= 3/4 of the way around)
+        // South is roughly slices * 1/4 to slices * 1/2 (in canvas coords, +y = down)
+        // Canvas: angle 0 = right, π/2 = down, π = left, 3π/2 = up
+        // So south quadrant = slices/4..slices/2 roughly
+        const southStart = Math.floor(config.slices / 4);
+        const southEnd = Math.floor(config.slices / 2);
+        // Pick from non-south slices
+        const candidates: number[] = [];
+        for (let s = 0; s < config.slices; s++) {
+            if (s < southStart || s > southEnd) {
+                candidates.push(s);
+            }
+        }
+        sliceStart = candidates[rng.nextInt(0, candidates.length)];
+    }
 
     const sliceCount = Math.min(params.exitWidth, config.slices);
 
