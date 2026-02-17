@@ -33,12 +33,12 @@ import type { PlayerProfile } from './adapt/profile.js';
 // ─── Constants ───────────────────────────────────────────────
 
 const ROT_SPEED = 2.5; // radians/sec
-const BALL_RADIUS = 4;
-const INNER_RADIUS = 30;
-const WIN_MARGIN = 12;
+const BALL_RADIUS = 3;
+const INNER_RADIUS = 35;
+const WIN_MARGIN = 10;
 
 const MAZE_RINGS = 12;
-const MAZE_SLICES = 16;
+const MAZE_SLICES = 24;
 
 const BG_COLOR = '#0a0a12';
 const BALL_COLOR = '#f0f0f0';
