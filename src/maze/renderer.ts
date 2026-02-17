@@ -130,22 +130,35 @@ function drawExitHighlight(
     const exitTheta0 = exit.sliceStart * sa;
     const exitTheta1 = (exit.sliceStart + exit.sliceCount) * sa;
 
-    // Glow wedge
+    // Glow band at outer edge only (not a wedge from center)
+    const bandInner = outerR - 8;
+    const bandOuter = outerR + 24;
+
     ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.arc(0, 0, outerR + 30, exitTheta0, exitTheta1);
+    ctx.arc(0, 0, bandOuter, exitTheta0, exitTheta1);
+    ctx.arc(0, 0, bandInner, exitTheta1, exitTheta0, true);
     ctx.closePath();
     ctx.fillStyle = EXIT_GLOW_COLOR;
     ctx.fill();
 
-    // Exit markers
+    // Dashed arc marker just outside the exit
     ctx.strokeStyle = EXIT_COLOR;
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 2.5;
     ctx.setLineDash([6, 4]);
     ctx.beginPath();
-    ctx.arc(0, 0, outerR + 5, exitTheta0, exitTheta1);
+    ctx.arc(0, 0, outerR + 6, exitTheta0, exitTheta1);
     ctx.stroke();
     ctx.setLineDash([]);
+
+    // Small radial ticks at exit edges
+    ctx.strokeStyle = EXIT_COLOR;
+    ctx.lineWidth = 2;
+    for (const theta of [exitTheta0, exitTheta1]) {
+        ctx.beginPath();
+        ctx.moveTo(bandInner * Math.cos(theta), bandInner * Math.sin(theta));
+        ctx.lineTo(bandOuter * Math.cos(theta), bandOuter * Math.sin(theta));
+        ctx.stroke();
+    }
 }
 
 /**

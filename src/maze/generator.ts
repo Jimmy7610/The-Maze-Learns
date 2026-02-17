@@ -1,18 +1,21 @@
 /**
  * Maze generator — circular maze with seeded RNG.
  *
- * Algorithm:
- *  1. Start from an inner cell, carve a spanning tree via randomized DFS.
- *  2. Remove extra walls based on branchiness to create alternate paths.
- *  3. Apply radialDensity cap (only keep fraction of radial walls).
- *  4. Place exit on outer ring.
- *  5. Validate geometric constraints (passage width >= 2*ballRadius + margin).
- *  6. Verify solvability with BFS; if unsolvable, retry with next seed.
+ * Algorithm (Arc-biased for CodePen-ish look):
+ *  1. Start all walls present.
+ *  2. Carve spanning tree via randomized DFS with strong bias toward
+ *     arc (CW/CCW) directions over radial (inner/outer). This creates
+ *     winding corridors that spiral around the maze rather than starburst spokes.
+ *  3. Remove extra arc walls based on branchiness to create alternate paths.
+ *  4. Remove most remaining radial walls (keep only radialDensity fraction).
+ *  5. Place exit on outer ring, ensuring no wall blocks it.
+ *  6. Validate with BFS; if unsolvable, retry with next seed.
  *
- * Visual rules (CodePen-ish):
- *  - Arc walls are primary.
- *  - Radial walls capped by radialDensity.
- *  - Inner void radius prevents starburst look.
+ * Visual rules:
+ *  - Arc walls are primary — they define the maze corridors.
+ *  - Radial walls are sparse (radialDensity cap, default 0.25).
+ *  - Inner void radius prevents star look at center.
+ *  - Alternating-ring radial walls only.
  */
 
 import { createRNG } from '../engine/rng.js';
@@ -28,60 +31,53 @@ import {
 } from './types.js';
 import { solveMaze } from './solver.js';
 
-const GEOMETRIC_MARGIN = 4; // px margin beyond 2*ballRadius
+const GEOMETRIC_MARGIN = 4;
 const MAX_REGEN_ATTEMPTS = 20;
 
-/**
- * Generate a solvable circular maze.
- */
+/** Weight multiplier for arc (CW/CCW) vs radial (inner/outer) in DFS. */
+const ARC_BIAS = 4;
+
 export function generateMaze(config: MazeConfig, params: GenerationParams): MazeData {
     let seed = config.seed;
 
     for (let attempt = 0; attempt < MAX_REGEN_ATTEMPTS; attempt++) {
         const rng = createRNG(seed);
+
+        // Geometric constraint check up front
+        if (!checkGeometricConstraints(config)) {
+            seed++;
+            continue;
+        }
+
         const cells = createEmptyGrid(config);
 
-        // 1. Carve spanning tree via randomized DFS
+        // 1. Carve spanning tree with arc bias
         carveSpanningTree(cells, config, rng);
 
-        // 2. Remove extra walls for branchiness
+        // 2. Remove extra walls for branchiness (prefer arc openings)
         addExtraOpenings(cells, config, params, rng);
 
-        // 3. Cap radial walls per radialDensity
+        // 3. Aggressively cap radial walls
         capRadialWalls(cells, config, params, rng);
 
         // 4. Place exit
         const exit = placeExit(cells, config, params, rng);
 
-        // 5. Geometric constraint check
-        if (!checkGeometricConstraints(config, params)) {
-            // Adjust config rather than fail — widen rings/slices
-            seed++;
-            continue;
-        }
+        // 5. Ensure path from ring 0 to exit is open
+        ensurePathToExit(cells, config, exit);
 
         // 6. Solvability check
         const solution = solveMaze(cells, config, exit);
         if (solution.solvable) {
-            return {
-                cells,
-                exit,
-                config,
-                params,
-                finalSeed: seed,
-            };
+            return { cells, exit, config, params, finalSeed: seed };
         }
 
         seed++;
     }
 
-    // Failsafe: generate a trivial maze (all inner/outer walls removed on one path)
     return generateFallbackMaze(config, params);
 }
 
-/**
- * Create grid with all walls present.
- */
 function createEmptyGrid(config: MazeConfig): MazeCell[][] {
     const grid: MazeCell[][] = [];
     for (let r = 0; r < config.rings; r++) {
@@ -101,9 +97,6 @@ function createEmptyGrid(config: MazeConfig): MazeCell[][] {
     return grid;
 }
 
-/**
- * Neighbors of a cell in the circular grid.
- */
 interface Neighbor {
     ring: number;
     slice: number;
@@ -114,25 +107,18 @@ function getNeighbors(ring: number, slice: number, config: MazeConfig): Neighbor
     const neighbors: Neighbor[] = [];
     const { rings, slices } = config;
 
-    // Inner neighbor
     if (ring > 0) {
         neighbors.push({ ring: ring - 1, slice, direction: 'inner' });
     }
-    // Outer neighbor
     if (ring < rings - 1) {
         neighbors.push({ ring: ring + 1, slice, direction: 'outer' });
     }
-    // CW neighbor (wraps)
     neighbors.push({ ring, slice: (slice + 1) % slices, direction: 'cw' });
-    // CCW neighbor (wraps)
     neighbors.push({ ring, slice: (slice - 1 + slices) % slices, direction: 'ccw' });
 
     return neighbors;
 }
 
-/**
- * Remove the wall between two adjacent cells.
- */
 function removeWall(
     cells: MazeCell[][],
     r1: number,
@@ -162,43 +148,49 @@ function removeWall(
 }
 
 /**
- * Carve a spanning tree using randomized DFS (recursive backtracker).
+ * Arc-biased DFS: shuffle neighbors but weight CW/CCW directions
+ * more heavily so corridors tend to wind around rings — producing
+ * the classic circular-maze look instead of radial spokes.
  */
 function carveSpanningTree(cells: MazeCell[][], config: MazeConfig, rng: RNG): void {
     const visited = new Set<string>();
     const key = (r: number, s: number) => `${r},${s}`;
     const stack: [number, number][] = [];
 
-    // Start from an inner cell (ring 0, slice 0)
     const startR = 0;
-    const startS = 0;
+    const startS = rng.nextInt(0, config.slices);
     visited.add(key(startR, startS));
     stack.push([startR, startS]);
 
     while (stack.length > 0) {
         const [cr, cs] = stack[stack.length - 1];
         const neighbors = getNeighbors(cr, cs, config);
-        rng.shuffle(neighbors);
 
-        let found = false;
+        // Build weighted list: repeat arc neighbors ARC_BIAS times
+        const weighted: Neighbor[] = [];
         for (const n of neighbors) {
-            if (!visited.has(key(n.ring, n.slice))) {
-                visited.add(key(n.ring, n.slice));
-                removeWall(cells, cr, cs, n.ring, n.slice, n.direction);
-                stack.push([n.ring, n.slice]);
-                found = true;
-                break;
+            if (visited.has(key(n.ring, n.slice))) continue;
+            const weight = n.direction === 'cw' || n.direction === 'ccw' ? ARC_BIAS : 1;
+            for (let w = 0; w < weight; w++) {
+                weighted.push(n);
             }
         }
 
-        if (!found) {
+        if (weighted.length === 0) {
             stack.pop();
+            continue;
         }
+
+        // Pick a random weighted neighbor
+        const chosen = weighted[rng.nextInt(0, weighted.length)];
+        visited.add(key(chosen.ring, chosen.slice));
+        removeWall(cells, cr, cs, chosen.ring, chosen.slice, chosen.direction);
+        stack.push([chosen.ring, chosen.slice]);
     }
 }
 
 /**
- * Add extra openings based on branchiness to create multiple paths.
+ * Add extra openings to create multiple paths. Prefer arc (CW/CCW) openings.
  */
 function addExtraOpenings(
     cells: MazeCell[][],
@@ -206,22 +198,35 @@ function addExtraOpenings(
     params: GenerationParams,
     rng: RNG,
 ): void {
-    const totalWalls = config.rings * config.slices * 2; // rough estimate
-    const openingsToAdd = Math.floor(totalWalls * params.branchiness * 0.3);
+    const totalCells = config.rings * config.slices;
+    const openingsToAdd = Math.floor(totalCells * params.branchiness * 0.5);
 
     for (let i = 0; i < openingsToAdd; i++) {
         const r = rng.nextInt(0, config.rings);
         const s = rng.nextInt(0, config.slices);
-        const neighbors = getNeighbors(r, s, config);
-        if (neighbors.length === 0) continue;
-        const n = neighbors[rng.nextInt(0, neighbors.length)];
-        removeWall(cells, r, s, n.ring, n.slice, n.direction);
+        const cell = cells[r][s];
+
+        // Prefer opening arc walls (inner/outer) to create ring corridors
+        if (rng.next() < 0.7) {
+            // Open an arc wall
+            if (r > 0 && cell.wallInner && rng.next() < 0.5) {
+                removeWall(cells, r, s, r - 1, s, 'inner');
+            } else if (r < config.rings - 1 && cell.wallOuter) {
+                removeWall(cells, r, s, r + 1, s, 'outer');
+            }
+        } else {
+            // Open a CW/CCW wall
+            const ns = (s + 1) % config.slices;
+            if (cell.wallCW) {
+                removeWall(cells, r, s, r, ns, 'cw');
+            }
+        }
     }
 }
 
 /**
- * Cap radial walls: only keep a fraction of CW walls.
- * Optionally only on alternating rings.
+ * Aggressively cap radial walls.
+ * Only keep a small fraction of CW walls, and only on even rings.
  */
 function capRadialWalls(
     cells: MazeCell[][],
@@ -231,8 +236,18 @@ function capRadialWalls(
 ): void {
     for (let r = 0; r < config.rings; r++) {
         for (let s = 0; s < config.slices; s++) {
-            // For each CW wall, randomly remove if above density cap
-            if (cells[r][s].wallCW && rng.next() > params.radialDensity) {
+            if (!cells[r][s].wallCW) continue;
+
+            // On odd rings, remove ALL radial walls for alternating pattern
+            if (r % 2 === 1) {
+                const ns = (s + 1) % config.slices;
+                cells[r][s].wallCW = false;
+                cells[r][ns].wallCCW = false;
+                continue;
+            }
+
+            // On even rings, keep only radialDensity fraction
+            if (rng.next() > params.radialDensity) {
                 const ns = (s + 1) % config.slices;
                 cells[r][s].wallCW = false;
                 cells[r][ns].wallCCW = false;
@@ -242,7 +257,7 @@ function capRadialWalls(
 }
 
 /**
- * Place exit sector on the outer ring.
+ * Place exit on outer ring.
  */
 function placeExit(
     cells: MazeCell[][],
@@ -257,7 +272,6 @@ function placeExit(
 
     const sliceCount = Math.min(params.exitWidth, config.slices);
 
-    // Remove outer walls at exit slices
     for (let i = 0; i < sliceCount; i++) {
         const s = (sliceStart + i) % config.slices;
         cells[config.rings - 1][s].wallOuter = false;
@@ -267,15 +281,32 @@ function placeExit(
 }
 
 /**
- * Check geometric constraints: passages must be wide enough for the ball.
+ * Ensure there's at least one open radial path from ring 0 to the outer ring
+ * at or near the exit slice. This guarantees physical reachability.
  */
-function checkGeometricConstraints(config: MazeConfig, _params: GenerationParams): boolean {
+function ensurePathToExit(
+    cells: MazeCell[][],
+    config: MazeConfig,
+    exit: ExitSector,
+): void {
+    // Pick a slice near the exit for the guaranteed radial path
+    const targetSlice = exit.sliceStart;
+
+    for (let r = 0; r < config.rings - 1; r++) {
+        // If there's no inner-to-outer connection at this slice, open it
+        if (cells[r][targetSlice].wallOuter && cells[r + 1][targetSlice].wallInner) {
+            cells[r][targetSlice].wallOuter = false;
+            cells[r + 1][targetSlice].wallInner = false;
+        }
+    }
+}
+
+function checkGeometricConstraints(config: MazeConfig): boolean {
     const rw = (config.outerRadius - config.innerRadius) / config.rings;
     const minCellHeight = 2 * config.ballRadius + GEOMETRIC_MARGIN;
 
     if (rw < minCellHeight) return false;
 
-    // Check arc length at innermost ring
     const innerR = ringInnerRadius(config, 0);
     const arcLen = innerR * sliceAngle(config.slices);
     if (arcLen < minCellHeight) return false;
@@ -283,36 +314,28 @@ function checkGeometricConstraints(config: MazeConfig, _params: GenerationParams
     return true;
 }
 
-/**
- * Fallback: simple radial corridors if normal generation keeps failing.
- */
 function generateFallbackMaze(config: MazeConfig, params: GenerationParams): MazeData {
     const cells = createEmptyGrid(config);
 
-    // Open a straight corridor from center to exit
-    const exitSlice = 0;
+    // Open everything as a spiral path
     for (let r = 0; r < config.rings; r++) {
-        cells[r][exitSlice].wallInner = false;
-        cells[r][exitSlice].wallOuter = false;
-    }
-    // Open some horizontal connections for playability
-    for (let r = 0; r < config.rings; r++) {
-        cells[r][exitSlice].wallCW = false;
-        const ns = (exitSlice + 1) % config.slices;
-        cells[r][ns].wallCCW = false;
+        // Open all CW walls on this ring (makes a ring corridor)
+        for (let s = 0; s < config.slices; s++) {
+            const ns = (s + 1) % config.slices;
+            cells[r][s].wallCW = false;
+            cells[r][ns].wallCCW = false;
+        }
+        // Open one radial connection to the next ring
+        if (r < config.rings - 1) {
+            const connectSlice = r % config.slices;
+            cells[r][connectSlice].wallOuter = false;
+            cells[r + 1][connectSlice].wallInner = false;
+        }
     }
 
-    const exit: ExitSector = { sliceStart: exitSlice, sliceCount: 2 };
-    // Ensure exit opening
-    cells[config.rings - 1][exitSlice].wallOuter = false;
-    const s2 = (exitSlice + 1) % config.slices;
-    cells[config.rings - 1][s2].wallOuter = false;
+    const exit: ExitSector = { sliceStart: 0, sliceCount: 2 };
+    cells[config.rings - 1][0].wallOuter = false;
+    cells[config.rings - 1][1].wallOuter = false;
 
-    return {
-        cells,
-        exit,
-        config,
-        params,
-        finalSeed: config.seed,
-    };
+    return { cells, exit, config, params, finalSeed: config.seed };
 }
