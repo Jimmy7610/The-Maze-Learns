@@ -29,9 +29,12 @@ export function createBall(x: number, y: number, radius: number): Ball {
  * @param mazeAngle current rotation angle of the maze in radians
  */
 export function integrateBall(ball: Ball, dt: number, mazeAngle: number): void {
-    // Gravity in board coords: rotate world-down (0, +1) by -mazeAngle
-    const gx = GRAVITY * Math.sin(-mazeAngle);
-    const gy = GRAVITY * Math.cos(-mazeAngle);
+    // Gravity in board coords: rotate screen-down (0, +G) into maze-local frame.
+    // Screen pos = rotate(maze_pos, mazeAngle), so maze-local gravity must be:
+    //   gx = G * sin(mazeAngle),  gy = G * cos(mazeAngle)
+    // This ensures the ball always falls south on screen regardless of maze rotation.
+    const gx = GRAVITY * Math.sin(mazeAngle);
+    const gy = GRAVITY * Math.cos(mazeAngle);
 
     // Semi-implicit Euler
     ball.vx += gx * dt;

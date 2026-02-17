@@ -37,8 +37,8 @@ const BALL_RADIUS = 8;
 const INNER_RADIUS = 50;
 const WIN_MARGIN = 15;
 
-const MAZE_RINGS = 5;
-const MAZE_SLICES = 8;
+const MAZE_RINGS = 7;
+const MAZE_SLICES = 12;
 
 const BG_COLOR = '#0a0a12';
 const BALL_COLOR = '#f0f0f0';

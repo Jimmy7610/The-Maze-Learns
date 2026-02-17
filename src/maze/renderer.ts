@@ -62,8 +62,8 @@ export function renderMaze(ctx: CanvasRenderingContext2D, maze: MazeData): void 
             const theta0 = s * sa;
             const theta1 = (s + 1) * sa;
 
-            // Inner arc wall
-            if (cell.wallInner && r > 0) {
+            // Inner arc wall (including ring 0 — creates entry holes from center)
+            if (cell.wallInner) {
                 ctx.beginPath();
                 ctx.arc(0, 0, rInner, theta0, theta1);
                 ctx.stroke();
@@ -103,14 +103,8 @@ export function renderMaze(ctx: CanvasRenderingContext2D, maze: MazeData): void 
         }
     }
 
-    // Draw inner boundary
-    if (config.innerRadius > 0) {
-        ctx.strokeStyle = WALL_COLOR;
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(0, 0, config.innerRadius, 0, Math.PI * 2);
-        ctx.stroke();
-    }
+    // Inner boundary is now handled per-cell via ring 0 wallInner flags.
+    // No solid inner boundary circle — holes allow the ball to enter the maze.
 }
 
 function isExitSliceForRender(slice: number, exit: ExitSector, slices: number): boolean {
@@ -179,8 +173,8 @@ export function buildCollisionSegments(maze: MazeData): Segment[] {
             const theta0 = s * sa;
             const theta1 = (s + 1) * sa;
 
-            // Inner arc wall
-            if (cell.wallInner && r > 0) {
+            // Inner arc wall (including ring 0 — entry holes from center)
+            if (cell.wallInner) {
                 segments.push(...tessellateArc(0, 0, rInner, theta0, theta1, ARC_SEGMENTS));
             }
 
@@ -211,12 +205,8 @@ export function buildCollisionSegments(maze: MazeData): Segment[] {
         }
     }
 
-    // Inner boundary circle
-    if (config.innerRadius > 0) {
-        segments.push(
-            ...tessellateArc(0, 0, config.innerRadius, 0, 2 * Math.PI, slices * ARC_SEGMENTS),
-        );
-    }
+    // Inner boundary is now per-cell via ring 0 wallInner flags.
+    // No solid inner boundary — holes let the ball enter the maze.
 
     // Outer boundary (complete circle minus exit sector)
     const outerR = ringOuterRadius(config, rings - 1);

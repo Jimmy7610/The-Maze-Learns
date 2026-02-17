@@ -54,6 +54,9 @@ export function generateMaze(config: MazeConfig, params: GenerationParams): Maze
         // 1. Carve spanning tree with arc bias
         carveSpanningTree(cells, config, rng);
 
+        // 1b. Open entry holes in ring 0 (so ball can enter maze from center)
+        openEntryHoles(cells, config, rng);
+
         // 2. Remove extra walls for branchiness (prefer arc openings)
         addExtraOpenings(cells, config, params, rng);
 
@@ -186,6 +189,22 @@ function carveSpanningTree(cells: MazeCell[][], config: MazeConfig, rng: RNG): v
         visited.add(key(chosen.ring, chosen.slice));
         removeWall(cells, cr, cs, chosen.ring, chosen.slice, chosen.direction);
         stack.push([chosen.ring, chosen.slice]);
+    }
+}
+
+/**
+ * Open 2-3 entry holes in ring 0's inner wall so the ball can
+ * fall from the center void into the maze. Holes are spaced
+ * evenly around the ring.
+ */
+function openEntryHoles(cells: MazeCell[][], config: MazeConfig, rng: RNG): void {
+    const numHoles = Math.min(3, Math.max(2, Math.floor(config.slices / 4)));
+    const spacing = Math.floor(config.slices / numHoles);
+    const offset = rng.nextInt(0, config.slices);
+
+    for (let i = 0; i < numHoles; i++) {
+        const s = (offset + i * spacing) % config.slices;
+        cells[0][s].wallInner = false;
     }
 }
 
