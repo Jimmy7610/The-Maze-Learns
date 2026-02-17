@@ -33,12 +33,12 @@ import type { PlayerProfile } from './adapt/profile.js';
 // ─── Constants ───────────────────────────────────────────────
 
 const ROT_SPEED = 2.5; // radians/sec
-const BALL_RADIUS = 8;
-const INNER_RADIUS = 50;
-const WIN_MARGIN = 15;
+const BALL_RADIUS = 4;
+const INNER_RADIUS = 30;
+const WIN_MARGIN = 12;
 
-const MAZE_RINGS = 7;
-const MAZE_SLICES = 12;
+const MAZE_RINGS = 12;
+const MAZE_SLICES = 16;
 
 const BG_COLOR = '#0a0a12';
 const BALL_COLOR = '#f0f0f0';
@@ -79,7 +79,7 @@ initInput();
 // ─── Initialization ─────────────────────────────────────────
 
 function computeMazeRadius(): number {
-  return Math.min(canvas.width, canvas.height) * 0.38;
+  return Math.min(canvas.width, canvas.height) * 0.44;
 }
 
 function createMaze(

@@ -65,9 +65,9 @@ export interface GenerationParams {
 export function defaultGenerationParams(): GenerationParams {
     return {
         wallDensity: 0.3,
-        branchiness: 0.3,
+        branchiness: 0.1,
         corridorWidth: 1.0,
-        radialDensity: 0.2,
+        radialDensity: 0.4,
         decoyRate: 0.2,
         pathLengthBias: 0.5,
         exitOffset: -1,

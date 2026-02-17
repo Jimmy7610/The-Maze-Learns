@@ -31,7 +31,7 @@ import {
 } from './types.js';
 import { solveMaze } from './solver.js';
 
-const GEOMETRIC_MARGIN = 4;
+const GEOMETRIC_MARGIN = 1;
 const MAX_REGEN_ATTEMPTS = 20;
 
 /** Weight multiplier for arc (CW/CCW) vs radial (inner/outer) in DFS. */
@@ -257,8 +257,8 @@ function capRadialWalls(
         for (let s = 0; s < config.slices; s++) {
             if (!cells[r][s].wallCW) continue;
 
-            // On odd rings, remove ALL radial walls for alternating pattern
-            if (r % 2 === 1) {
+            // On odd rings, keep a small fraction of radials (not zero)
+            if (r % 2 === 1 && rng.next() > params.radialDensity * 0.4) {
                 const ns = (s + 1) % config.slices;
                 cells[r][s].wallCW = false;
                 cells[r][ns].wallCCW = false;
